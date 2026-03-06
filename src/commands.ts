@@ -1,6 +1,6 @@
 import { error } from "node:console";
-import { setUser } from "./config";
-import { createUser, getUserByName, resetUsersTable } from "./lib/db/queries/users";
+import { readConfig, setUser } from "./config";
+import { createUser, getUserByName, getUsers, resetUsersTable } from "./lib/db/queries/users";
 
 type CommandHandler = (cmdName: string, ...args: string[]) => Promise<void>;
 
@@ -34,6 +34,18 @@ export async function handlerRegister(cmdName: string, ...args:string[]){
 export async function handlerReset(cmdName: string, ...args:string[]){
     await resetUsersTable();
     console.log(`All users where successfully deleted`);
+}
+
+export async function handlerUsers(cmdName:string, ...args:string[]) {
+    const users = await getUsers();
+    const current_user = readConfig().currentUserName;
+    for (const user of users) {
+        if (user.name === current_user){
+            console.log(`* ${user.name} (current)`);
+        } else {
+            console.log(`* ${user.name}`);
+        }
+    }
 }
 
 export type CommandRegistry = {
