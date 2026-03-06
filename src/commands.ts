@@ -8,6 +8,10 @@ export async function handlerLogin(cmdName: string, ...args: string[]){
     if (args.length == 0){
         throw new Error("login command expects username argument");
     }
+    const existing = await getUserByName(args[0]);
+    if (!existing){
+        throw new Error(`User ${args[0]} not yet registered`)
+    }
     setUser(args[0]);
     console.log(`User ${args[0]} was succesfully set`);
 }
