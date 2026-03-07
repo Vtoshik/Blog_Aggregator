@@ -1,7 +1,9 @@
 import { error } from "node:console";
 import { readConfig, setUser } from "./config";
-import { createUser, getUserByName, getUsers, resetUsersTable } from "./lib/db/queries/users";
+import { createUser, getUserByName, getUsers, resetUsersTable, User } from "./lib/db/queries/users";
 import { fetchFeed } from "./fetchXML";
+import { read } from "node:fs";
+import { createFeed, Feed } from "./lib/db/queries/feeds";
 
 type CommandHandler = (cmdName: string, ...args: string[]) => Promise<void>;
 
@@ -59,6 +61,31 @@ export async function handlerAgg(cmdName: string, ...args: string[]){
     for (const item of result.channel.item) {
         console.log(`  - ${item.title}`);
     }
+}
+
+export async function handlerAddFeed(cmdName: string, ...args: string[]){
+    if (args.length == 0 || args.length < 2){
+        throw new Error("addfeed command expects name and url arguments");
+    }
+
+    const name = readConfig().currentUserName;
+    if (!name){
+        throw new Error(`User doesn't exist`);
+    }
+
+    const user = await getUserByName(name);
+    if (!user) {
+        throw new Error(`User: ${name} doesn't exist in db`);
+    }
+
+    const feed = await createFeed(args[0], args[1], user.id);
+    printFeed(user, feed);
+}
+
+function printFeed(user: User, feed: Feed){
+    console.log(`Username: ${user.name}`);
+    console.log(`Feed name: ${feed.name}`);
+    console.log(`Feed url: ${feed.url}`);
 }
 
 export type CommandRegistry = {
