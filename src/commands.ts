@@ -3,7 +3,7 @@ import { readConfig, setUser } from "./config";
 import { createUser, getUserByName, getUsers, resetUsersTable, User } from "./lib/db/queries/users";
 import { fetchFeed } from "./fetchXML";
 import { read } from "node:fs";
-import { createFeed, Feed } from "./lib/db/queries/feeds";
+import { createFeed, Feed, getAllFeeds } from "./lib/db/queries/feeds";
 
 type CommandHandler = (cmdName: string, ...args: string[]) => Promise<void>;
 
@@ -80,6 +80,19 @@ export async function handlerAddFeed(cmdName: string, ...args: string[]){
 
     const feed = await createFeed(args[0], args[1], user.id);
     printFeed(user, feed);
+}
+
+export async function handlerFeeds(cmdName: string, ...args: string[]){
+    if (args.length > 0) {
+        throw new Error(`feeds command doesn't require arguments`);
+    }
+
+    const feeds = await getAllFeeds();
+    for (const {feeds: feed, users: user} of feeds){
+        console.log(`Username: ${user.name}`);
+        console.log(`Feed name: ${feed.name}`);
+        console.log(`Feed url: ${feed.url}`);
+    }
 }
 
 function printFeed(user: User, feed: Feed){
