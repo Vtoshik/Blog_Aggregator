@@ -3,7 +3,8 @@ import { readConfig, setUser } from "./config";
 import { createUser, getUserByName, getUsers, resetUsersTable, User } from "./lib/db/queries/users";
 import { fetchFeed } from "./fetchXML";
 import { read } from "node:fs";
-import { createFeed, Feed, getAllFeeds } from "./lib/db/queries/feeds";
+import { createFeed, Feed, getAllFeeds, getFeedByUrl } from "./lib/db/queries/feeds";
+import { createFeedFollow, getFeedFollowsForUser } from "./lib/db/queries/feed_follows";
 
 type CommandHandler = (cmdName: string, ...args: string[]) => Promise<void>;
 
@@ -79,6 +80,7 @@ export async function handlerAddFeed(cmdName: string, ...args: string[]){
     }
 
     const feed = await createFeed(args[0], args[1], user.id);
+    await createFeedFollow(user.id, feed.id);
     printFeed(user, feed);
 }
 
@@ -93,6 +95,42 @@ export async function handlerFeeds(cmdName: string, ...args: string[]){
         console.log(`Feed name: ${feed.name}`);
         console.log(`Feed url: ${feed.url}`);
     }
+}
+
+export async function handlerFollow(cmdName: string, ...args: string[]){
+    if (args.length !== 1){
+        throw new Error(`follow commands requires only one url argument`);
+    }
+
+    const name = readConfig().currentUserName;
+    if (!name){
+        throw new Error(`User doesn't exist`);
+    }
+
+    const feed = await getFeedByUrl(args[0]);
+    const user = await getUserByName(name);
+    const follow = await createFeedFollow(user.id, feed.id);
+    if (follow) {
+        console.log(`User: ${user.name} followed ${feed.name} successfully `);
+    }
+}
+
+export async function handlerFollowing(cmdName: string, ...args: string[]){
+    if (args.length > 0) {
+        throw new Error(`following command doesn't require arguments`);
+    }
+
+    const name = readConfig().currentUserName;
+    if (!name){
+        throw new Error(`User doesn't exist`);
+    }
+
+    const follows = await getFeedFollowsForUser(name);
+    if (follows) {
+        for (const follow of follows){
+            console.log(`* ${follow.name}`);
+        }
+    }   
 }
 
 function printFeed(user: User, feed: Feed){
