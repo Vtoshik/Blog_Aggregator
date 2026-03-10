@@ -27,3 +27,12 @@ export async function getFeedFollowsForUser(username: string){
 
     return follows
 }
+
+export async function deleteFeedFollow(username: string, url: string) {
+    const [result] = await db.select({id: feedFollows.id}).from(users)
+    .innerJoin(feedFollows, eq(users.id, feedFollows.user_id))
+    .innerJoin(feeds, eq(feedFollows.feed_id, feeds.id))
+    .where(eq(users.name, username) && eq(feeds.url, url));
+    const r = await db.delete(feedFollows).where(eq(feedFollows.id, result.id));
+    return r;
+}
