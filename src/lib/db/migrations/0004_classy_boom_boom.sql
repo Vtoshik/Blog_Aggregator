@@ -1,0 +1,1 @@
+ALTER TABLE "feeds" ALTER COLUMN "last_fetched_at" SET DATA TYPE timestamp USING last_fetched_at::timestamp;

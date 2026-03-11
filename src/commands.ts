@@ -1,8 +1,9 @@
 import { readConfig, setUser } from "./config";
 import { createUser, getUserByName, getUsers, resetUsersTable, User } from "./lib/db/queries/users";
 import { fetchFeed } from "./fetchXML";
-import { createFeed, Feed, getAllFeeds, getFeedByUrl } from "./lib/db/queries/feeds";
+import { createFeed, Feed, getAllFeeds, getFeedByUrl, getNextFeedToFetch, markFeedFetched } from "./lib/db/queries/feeds";
 import { createFeedFollow, deleteFeedFollow, getFeedFollowsForUser } from "./lib/db/queries/feed_follows";
+import { createPost, getPostsForUser } from "./lib/db/queries/posts";
 
 export type CommandHandler = (cmdName: string, ...args: string[]) => Promise<void>;
 
@@ -51,14 +52,39 @@ export async function handlerUsers(cmdName:string, ...args: string[]) {
 }
 
 export async function handlerAgg(cmdName: string, ...args: string[]){
-    let url = "https://www.wagslane.dev/index.xml";
-    const result = await fetchFeed(url);
-    console.log(`Feed: ${result.channel.title}`);
-    console.log(`Link: ${result.channel.link}`);
-    console.log(`Description: ${result.channel.description}`);
-    console.log(`Items: ${result.channel.item.length}`);
-    for (const item of result.channel.item) {
-        console.log(`  - ${item.title}`);
+    if (args.length !== 1) {
+        throw new Error("agg command expects a time_between_reqs argument (e.g. 1s, 1m, 1h)");
+    }
+
+    const timeBetweenReqs = parseDuration(args[0]);
+    console.log(`Collecting feeds every ${args[0]}...`);
+
+    scrapeFeeds().catch(console.error);
+
+    const interval = setInterval(() => {
+        scrapeFeeds().catch(console.error);
+    }, timeBetweenReqs);
+
+    await new Promise<void>((resolve) => {
+        process.on("SIGINT", () => {
+            console.log("Shutting down feed aggregator...");
+            clearInterval(interval);
+            resolve();
+        });
+    });
+}
+
+function parseDuration(duration: string): number {
+    const regex = /^(\d+)(ms|s|m|h)$/;
+    const match = duration.match(regex);
+    if (!match) throw new Error(`invalid duration: ${duration}. Use formats like 1s, 1m, 1h, 500ms`);
+    const value = parseInt(match[1]);
+    switch (match[2]) {
+        case "ms": return value;
+        case "s": return value * 1000;
+        case "m": return value * 1000 * 60;
+        case "h": return value * 1000 * 60 * 60;
+        default: throw new Error(`unknown duration unit: ${match[2]}`);
     }
 }
 
@@ -120,6 +146,52 @@ export async function handlerUnFollow(cmdName: string, user: User, ...args: stri
         console.log(`User: ${user.name} successfully unfollowed url: ${args[0]}`)
     }
 }
+
+export async function scrapeFeeds(){
+    const next = await getNextFeedToFetch();
+    await markFeedFetched(next.id);
+    const result = await fetchFeed(next.url);
+    console.log(`Found ${result.channel.item.length} posts in ${next.name}`);
+    let saved = 0;
+    for (const item of result.channel.item){
+        const publishedAt = parseDate(item.pubDate);
+        const post = await createPost(item.title, item.link, next.id, item.description, publishedAt ?? undefined);
+        if (post) saved++;
+    }
+    console.log(`  Saved ${saved} new posts from ${next.name}`);
+}
+
+function parseDate(raw: string | number | undefined): Date | null {
+    if (!raw) return null;
+    const d = new Date(raw);
+    if (!isNaN(d.getTime())) return d;
+    return null;
+}
+
+export async function handlerBrowse(cmdName: string, user: User, ...args: string[]){
+    const limit = args.length > 0 ? parseInt(args[0]) : 2;
+    if (isNaN(limit) || limit < 1) {
+        throw new Error("browse limit must be a positive integer");
+    }
+    const userPosts = await getPostsForUser(user.name, limit);
+    if (userPosts.length === 0) {
+        console.log("No posts found. Try running `agg` first to fetch feeds.");
+        return;
+    }
+    for (const post of userPosts) {
+        console.log(`--- ${post.title}`);
+        console.log(`    URL: ${post.url}`);
+        if (post.published_at) {
+            console.log(`    Published: ${post.published_at.toDateString()}`);
+        }
+        if (post.description) {
+            const preview = post.description.replace(/<[^>]+>/g, "").slice(0, 200);
+            console.log(`    ${preview}`);
+        }
+        console.log();
+    }
+}
+
 
 function printFeed(user: User, feed: Feed){
     console.log(`Username: ${user.name}`);
